@@ -45,7 +45,7 @@ func init() {
 
 Why should you use `dns.Resolver`?
 
-- Increase performance of HTTP clients, reducing unnecessary round trips
+- Increase the performance of HTTP clients, reducing unnecessary round trips
   for DNS lookups.
 
 - Avoid external dependencies, like separate a caching DNS resolver.
