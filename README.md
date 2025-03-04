@@ -22,18 +22,21 @@ import (
 	"github.com/jschaf/dns"
 )
 
-var cachingClient = &http.Client{
-	Transport: &http.Transport{
-		DialContext: (&net.Dialer{
-			Resolver: dns.NewCacheResolver(),
-		}).DialContext,
-	},
-}
+var (
+	dnsCache      = &dns.Cache{}
+	cachingClient = &http.Client{
+		Transport: &http.Transport{
+			DialContext: (&net.Dialer{
+				Resolver: dnsCache.Resolver(),
+			}).DialContext,
+		},
+	}
+)
 
 // To replace the global, default HTTP client, use the `http.DefaultClient`
 // variable.
 func init() {
-    http.DefaultClient = cachingClient
+	http.DefaultClient = cachingClient
 }
 
 ```
