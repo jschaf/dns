@@ -4,13 +4,9 @@ import (
 	"context"
 	"net"
 	"sync"
-)
 
-type CacheResolverOpts struct {
-	// Dialer is the dialer to use for DNS queries.
-	// If unset, uses a default dialer.
-	Dialer *net.Dialer
-}
+	"golang.org/x/net/dns/dnsmessage"
+)
 
 // Cache is a DNS cache that uses net.Resolver for an http.Transport.
 // Typically used for to cache DNS queries as part of an http.Client.
@@ -40,24 +36,39 @@ type Cache struct {
 	// If nil, the default dialer is used.
 	Dial func(ctx context.Context, network, address string) (net.Conn, error)
 
-	once     sync.Once // init resolver
+	// QuestionCache is an optional cache for DNS questions.
+	//
+	// If nil, uses a simple in-memory cache.
+	QuestionCache QuestionCache
+
+	once     sync.Once // initializes resolver
 	resolver *net.Resolver
 }
 
-func (c *Cache) Resolver() *net.Resolver {
+func (c *Cache) init() {
 	c.once.Do(func() {
+		defaultDialer := &net.Dialer{}
 		if c.Dial == nil {
-			d := &net.Dialer{}
-			c.Dial = d.DialContext
+			c.Dial = defaultDialer.DialContext
+		}
+		if c.QuestionCache == nil {
+			c.QuestionCache = &questionCache{
+				m: make(map[dnsmessage.Question]Answer),
+			}
 		}
 		c.resolver = &net.Resolver{
 			StrictErrors: true,
 			PreferGo:     true,
-			Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				// TODO: implement DNS caching
-				return c.Dial(ctx, network, addr)
-			},
+			Dial:         c.dial,
 		}
 	})
+}
+
+func (c *Cache) Resolver() *net.Resolver {
+	c.init()
 	return c.resolver
+}
+
+func (c *Cache) dial(ctx context.Context, network, addr string) (net.Conn, error) {
+	return c.Dial(ctx, network, addr)
 }
