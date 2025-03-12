@@ -1,14 +1,11 @@
-name: lint
+name: go
 on:
   push:
     branches: [main]
   pull_request:
 
-permissions:
-  contents: read
-
 jobs:
-  golangci:
+  test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -19,7 +16,5 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Run
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: v1.64
+      - name: Test
+        run: go test
