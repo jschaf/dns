@@ -2,6 +2,7 @@ package dns
 
 import (
 	"net/netip"
+	"sync"
 	"testing"
 	"time"
 
@@ -39,6 +40,84 @@ func TestQuestionCache_Get(t *testing.T) {
 		t.Errorf("expired question: got = %v; want false", got)
 	}
 	assertHitsMisses(t, qc, 1, 2)
+}
+
+const (
+	goroutineCount = 8
+	runCount       = 256
+)
+
+func TestQuestionCache_StressGetMissing(t *testing.T) {
+	qc := newQuestionCache()
+
+	q1 := Question{FQDN: "example.com.", Type: dnsmessage.TypeA}
+
+	runParallel(func(int) {
+		got, ok := qc.Get(q1)
+		if ok {
+			t.Fatalf("want missing answer; got %v", got)
+		}
+	})
+
+	assertHitsMisses(t, qc, 0, int64(goroutineCount*runCount))
+}
+
+func TestQuestionCache_StressGetPresent(t *testing.T) {
+	qc := newQuestionCache()
+
+	q1 := Question{FQDN: "example.com.", Type: dnsmessage.TypeA}
+	a1 := Answer{
+		FetchTime: time.Now(),
+		TTL:       20 * time.Millisecond,
+		IPs:       []netip.Addr{netip.MustParseAddr("1.2.3.4")},
+	}
+	qc.Set(q1, a1)
+
+	runParallel(func(int) {
+		_, ok := qc.Get(q1)
+		if !ok {
+			t.Fatal("want present answer; got missing")
+		}
+	})
+
+	assertHitsMisses(t, qc, int64(goroutineCount*runCount), 0)
+}
+
+func TestQuestionCache_StressGetSet(t *testing.T) {
+	qc := newQuestionCache()
+
+	q1 := Question{FQDN: "example.com.", Type: dnsmessage.TypeA}
+	a1 := Answer{
+		FetchTime: time.Now(),
+		TTL:       20 * time.Millisecond,
+		IPs:       []netip.Addr{netip.MustParseAddr("1.2.3.4")},
+	}
+
+	runParallel(func(i int) {
+		if i%4 == 0 {
+			qc.Set(q1, a1)
+		}
+		_, ok := qc.Get(q1)
+		if !ok {
+			t.Fatal("want present answer; got missing")
+		}
+	})
+
+	assertHitsMisses(t, qc, int64(goroutineCount*runCount), 0)
+}
+
+func runParallel(f func(i int)) {
+	var wg sync.WaitGroup
+	for range goroutineCount {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range runCount {
+				f(i)
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 func assertSameAnswer(t *testing.T, want, got Answer) {
